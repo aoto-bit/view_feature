@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- ページの文字エンコーディングを指定 -->
+    <meta charset="UTF-8">
+    <!-- ビューポートの設定、モバイルデバイス対応 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- ページのタイトルを指定 -->
+    <title>Maze Game</title>
+    <!-- 外部CSSファイルをリンク -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- 外部JavaScriptライブラリChart.jsをCDNから読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- 迷路表示用のDIV要素 -->
+    <div id="maze">
+        <!-- エージェント表示用のDIV要素 -->
+        <div id="agent" class="agent">
+            <!-- エージェントの進行方向を示す矢印 -->
+            <div id="arrow" class="arrow"></div>
+        </div>
+    </div>
+    <!-- データ表示用のDIV要素 -->
+    <div id="data">
+        <!-- タブのコンテナ -->
+        <div class="tab">
+            <!-- タブのボタン -->
+            <button class="tablinks" onclick="openTab(event, 'Conv1')">Conv1</button>
+            <button class="tablinks" onclick="openTab(event, 'Conv1Relu')">Conv1 Relu</button>
+            <button class="tablinks" onclick="openTab(event, 'Conv2')">Conv2</button>
+            <button class="tablinks" onclick="openTab(event, 'Conv2Relu')">Conv2 Relu</button>
+            <button class="tablinks" onclick="openTab(event, 'Conv3')">Conv3</button>
+            <button class="tablinks" onclick="openTab(event, 'Conv3Relu')">Conv3 Relu</button>
+            <button class="tablinks" onclick="openTab(event, 'ConvFlatten')">Conv Flatten</button>
+            <button class="tablinks" onclick="openTab(event, 'NoisyValues')">Noisy Values</button>
+            <button class="tablinks" onclick="openTab(event, 'Output')">Output</button>
+        </div>
+
+        <!-- 各タブコンテンツ -->
+        <div id="Conv1" class="tabcontent">
+            <div class="canvas-grid" id="conv1Grid"></div>
+        </div>
+
+        <div id="Conv1Relu" class="tabcontent">
+            <div class="canvas-grid" id="conv1ReluGrid"></div>
+        </div>
+
+        <div id="Conv2" class="tabcontent">
+            <div class="canvas-grid" id="conv2Grid"></div>
+        </div>
+
+        <div id="Conv2Relu" class="tabcontent">
+            <div class="canvas-grid" id="conv2ReluGrid"></div>
+        </div>
+
+        <div id="Conv3" class="tabcontent">
+            <div class="canvas-grid" id="conv3Grid"></div>
+        </div>
+
+        <div id="Conv3Relu" class="tabcontent">
+            <div class="canvas-grid" id="conv3ReluGrid"></div>
+        </div>
+
+        <div id="ConvFlatten" class="tabcontent">
+            <canvas id="convFlattenCanvas"></canvas>
+        </div>
+
+        <div id="NoisyValues" class="tabcontent">
+            <div class="canvas-grid-vertical">
+                <canvas id="noisyValue1Canvas"></canvas>
+                <canvas id="noisyValue2Canvas"></canvas>
+                <canvas id="noisyAdvantage1Canvas"></canvas>
+                <canvas id="noisyAdvantage2Canvas"></canvas>
+            </div>
+        </div>
+
+        <div id="Output" class="tabcontent">
+            <canvas id="outputCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // HTML要素の取得
+        const agent = document.getElementById('agent');
+        const arrow = document.getElementById('arrow');
+        const conv1Grid = document.getElementById('conv1Grid');
+        const conv1ReluGrid = document.getElementById('conv1ReluGrid');
+        const conv2Grid = document.getElementById('conv2Grid');
+        const conv2ReluGrid = document.getElementById('conv2ReluGrid');
+        const conv3Grid = document.getElementById('conv3Grid');
+        const conv3ReluGrid = document.getElementById('conv3ReluGrid');
+        const convFlattenCanvas = document.getElementById('convFlattenCanvas');
+        const noisyValue1Canvas = document.getElementById('noisyValue1Canvas');
+        const noisyValue2Canvas = document.getElementById('noisyValue2Canvas');
+        const noisyAdvantage1Canvas = document.getElementById('noisyAdvantage1Canvas');
+        const noisyAdvantage2Canvas = document.getElementById('noisyAdvantage2Canvas');
+        const outputCanvas = document.getElementById('outputCanvas');
+
+        // エージェントの位置と向きを管理する変数
+        let x = 0, y = 0, angle = 0;
+        const step = 0.1; // エージェントの前進のステップサイズ
+        const agentSize = 50; // エージェントのサイズ（ピクセル）
+        const mazeSize = 400; // 迷路のサイズ（ピクセル）
+
+        // キーボードの入力に応じてエージェントを移動
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowUp': 
+                    moveForward(); // 上矢印キーで前進
+                    break;
+                case 'ArrowLeft': 
+                    angle = (angle - 1 + 24) % 24; // 左矢印キーで左回転
+                    break;
+                case 'ArrowRight': 
+                    angle = (angle + 1) % 24; // 右矢印キーで右回転
+                    break;
+            }
+            updateAgentPosition(); // エージェントの位置を更新
+            loadData(x, y); // 新しい位置に基づいてデータをロード
+        });
+
+        // エージェントを前進させる関数
+        function moveForward() {
+            const rad = ((angle * 15) - 90) * (Math.PI / 180); // 角度をラジアンに変換
+            x += Math.cos(rad) * step;
+            y += Math.sin(rad) * step;
+            // エージェントのサイズを考慮して、xとyを境界内に保持
+            x = Math.max(agentSize / 2 / mazeSize * 7, Math.min(7 - agentSize / 2 / mazeSize * 7, x));
+            y = Math.max(agentSize / 2 / mazeSize * 7, Math.min(7 - agentSize / 2 / mazeSize * 7, y));
+        }
+
+        // エージェントの位置を更新する関数
+        function updateAgentPosition() {
+            agent.style.left = `${(x / 7) * mazeSize - agentSize / 2}px`; // xを0-400pxにスケール
+            agent.style.top = `${(y / 7) * mazeSize - agentSize / 2}px`; // yを0-400pxにスケール
+            arrow.style.transform = `rotate(${angle * 15}deg)`; // 矢印の向きを更新
+        }
+
+        // データをロードする関数
+        function loadData(x, y) {
+            fetch(`/get_data?x=${Math.round(x)}&y=${Math.round(y)}`) // サーバからデータを取得
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(errorData => {
+                            throw new Error(`Error fetching data: ${errorData.error}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateGrid(data); // データを使ってグリッドを更新
+                })
+                .catch(error => {
+                    console.error("Error fetching data:", error); // エラーハンドリング
+                });
+        }
+
+        // グリッドを更新する関数
+        function updateGrid(data) {
+            console.log("Fetched data:", data);  // デバッグ用：データ構造を確認
+
+            drawGrid(conv1Grid, data.conv1, 20, 20, 32, 4, 8);
+            drawGrid(conv1ReluGrid, data.conv1_relu, 20, 20, 32, 4, 8);
+            drawGrid(conv2Grid, data.conv2, 9, 9, 64, 8, 8);
+            drawGrid(conv2ReluGrid, data.conv2_relu, 9, 9, 64, 8, 8);
+            drawGrid(conv3Grid, data.conv3, 7, 7, 64, 8, 8);
+            drawGrid(conv3ReluGrid, data.conv3_relu, 7, 7, 64, 8, 8);
+            drawVector(convFlattenCanvas, data.conv_flatten, 3136);
+            drawVector(noisyValue1Canvas, data.noisy_value1, 512);
+            drawVector(noisyValue2Canvas, data.noisy_value2, 51);
+            drawVector(noisyAdvantage1Canvas, data.noisy_advantage1, 512);
+            drawVector(noisyAdvantage2Canvas, data.noisy_advantage2, 153);
+            drawBarChart(outputCanvas, data.output);
+        }
+
+        // グリッドを描画する関数
+        function drawGrid(container, data, width, height, numFilters, rows, cols) {
+            container.innerHTML = '';
+            for (let i = 0; i < numFilters; i++) {
+                const canvas = document.createElement('canvas');
+                canvas.width = width; // 可視性のためにスケールを調整
+                canvas.height = height; // 可視性のためにスケールを調整
+                const ctx = canvas.getContext('2d');
+                drawImage(ctx, data[i], width, height);
+                container.appendChild(canvas);
+            }
+        }
+
+        // ベクターデータを描画する関数
+        function drawVector(canvas, data, length) {
+            canvas.width = length; // キャンバスの幅をデータの長さに設定
+            canvas.height = 10; // キャンバスの高さを固定
+            const ctx = canvas.getContext('2d'); // キャンバスの描画コンテキストを取得
+            const imgData = ctx.createImageData(length, 1); // 1ピクセル高さの画像データを作成
+            const min = Math.min(...data.flat()); // データの最小値を取得
+            const max = Math.max(...data.flat()); // データの最大値を取得
+        
+            // データをループして画像データに変換
+            for (let i = 0; i < length; i++) {
+                const value = (data[i] - min) / (max - min) * 255; // 値を0-255の範囲にスケーリング
+                const index = i * 4; // 画像データのインデックスを計算
+                imgData.data[index] = value; // 赤チャネルに値を設定
+                imgData.data[index + 1] = value; // 緑チャネルに値を設定
+                imgData.data[index + 2] = value; // 青チャネルに値を設定
+                imgData.data[index + 3] = 255; // アルファチャネルに255を設定（完全に不透明）
+            }
+        
+            // 変換した画像データをキャンバスに描画
+            ctx.putImageData(imgData, 0, 0); // キャンバスの原点に画像データを配置
+        }
+        
+
+        // 画像データを描画する関数
+        function drawImage(ctx, data, width, height) {
+            // キャンバスの画像データを作成
+            const imgData = ctx.createImageData(width, height);
+            const min = Math.min(...data.flat()); // データの最小値を取得
+            const max = Math.max(...data.flat()); // データの最大値を取得
+        
+            // データをループして画像データに変換
+            for (let i = 0; i < data.length; i++) {
+                for (let j = 0; j < data[i].length; j++) {
+                    const value = (data[i][j] - min) / (max - min) * 255; // 値を0-255の範囲にスケーリング
+                    const index = (i * width + j) * 4; // 画像データのインデックスを計算
+                    imgData.data[index] = value; // 赤チャネルに値を設定
+                    imgData.data[index + 1] = value; // 緑チャネルに値を設定
+                    imgData.data[index + 2] = value; // 青チャネルに値を設定
+                    imgData.data[index + 3] = 255; // アルファチャネルに255を設定（完全に不透明）
+                }
+            }
+        
+            // 変換した画像データをキャンバスに描画
+            ctx.putImageData(imgData, 0, 0); // キャンバスの原点に画像データを配置
+        }
+        
+
+        // チャートのインスタンス
+        let chartInstance = null;
+
+        // タブを開く関数
+        function openTab(evt, tabName) {
+            // すべてのタブコンテンツを非表示にするための変数を宣言
+            var i, tabcontent, tablinks;
+        
+            // タブコンテンツの要素を取得し、ループで非表示に設定
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none"; // すべてのタブコンテンツを非表示
+            }
+        
+            // タブリンクの要素を取得し、ループでアクティブクラスを削除
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", ""); // すべてのタブリンクから"active"クラスを削除
+            }
+        
+            // 指定されたタブ名に対応するタブコンテンツを表示
+            document.getElementById(tabName).style.display = "block"; // 対応するタブコンテンツを表示
+            evt.currentTarget.className += " active"; // クリックされたタブリンクに"active"クラスを追加
+        
+            // 新しいタブを開くときにデータをロード
+            loadData(x, y); // 現在の位置に基づいてデータをロード
+        }
+        
+
+        // 棒グラフを描画する関数
+        function drawBarChart(canvas, data) {
+            console.log("Fetched data:", data, data[0]); // デバッグ用に取得したデータをコンソールに表示
+            if (!data || data.length < 1 || !data[0] || data[0].length < 3) {
+                console.error("Invalid data structure for drawBarChart:", data); // データ構造が不正の場合、エラーメッセージを表示
+                return;
+            }
+        
+            // X軸のラベルをデータの長さに基づいて作成
+            const labels = Array.from({ length: data[0][0].length }, (_, i) => i + 1);
+            // データセットの背景色を定義
+            const baseColors = [
+                'rgba(255, 99, 132, 0.2)', // データセット1の背景色
+                'rgba(54, 162, 235, 0.2)', // データセット2の背景色
+                'rgba(75, 192, 192, 0.2)'  // データセット3の背景色
+            ];
+            // データセットの枠線の色を定義
+            const borderColors = [
+                'rgba(255, 99, 132, 1)', // データセット1の枠線の色
+                'rgba(54, 162, 235, 1)', // データセット2の枠線の色
+                'rgba(75, 192, 192, 1)'  // データセット3の枠線の色
+            ];
+        
+            // データセットを作成
+            const datasets = [
+                {
+                    label: 'Output 1', // データセット1のラベル
+                    data: data[0][0], // データセット1のデータ
+                    backgroundColor: baseColors[0], // データセット1の背景色
+                    borderColor: borderColors[0], // データセット1の枠線の色
+                    borderWidth: 1 // 枠線の幅
+                },
+                {
+                    label: 'Output 2', // データセット2のラベル
+                    data: data[0][1], // データセット2のデータ
+                    backgroundColor: baseColors[1], // データセット2の背景色
+                    borderColor: borderColors[1], // データセット2の枠線の色
+                    borderWidth: 1 // 枠線の幅
+                },
+                {
+                    label: 'Output 3', // データセット3のラベル
+                    data: data[0][2], // データセット3のデータ
+                    backgroundColor: baseColors[2], // データセット3の背景色
+                    borderColor: borderColors[2], // データセット3の枠線の色
+                    borderWidth: 1 // 枠線の幅
+                }
+            ];
+        
+            // 既存のチャートが存在する場合、それを破棄
+            if (chartInstance) {
+                chartInstance.destroy(); // 既存のチャートインスタンスを破棄
+            }
+        
+            // 新しいチャートを作成
+            chartInstance = new Chart(canvas, {
+                type: 'bar', // チャートの種類を棒グラフに設定
+                data: {
+                    labels: labels, // X軸のラベルを設定
+                    datasets: datasets // データセットを設定
+                },
+                options: {
+                    responsive: true, // レスポンシブ設定を有効にする
+                    maintainAspectRatio: false, // アスペクト比を維持しない
+                    scales: {
+                        x: {
+                            display: true, // X軸を表示
+                            title: {
+                                display: true, // X軸のタイトルを表示
+                                text: 'Index' // X軸のタイトルを設定
+                            }
+                        },
+                        y: {
+                            display: true, // Y軸を表示
+                            title: {
+                                display: true, // Y軸のタイトルを表示
+                                text: 'Value' // Y軸のタイトルを設定
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    let label = context.dataset.label || ''; // データセットのラベルを取得
+                                    if (label) {
+                                        label += ': '; // ラベルにコロンを追加
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y; // データポイントの値をラベルに追加
+                                    }
+                                    return label; // ラベルを返す
+                                }
+                            }
+                        }
+                    },
+                    hover: {
+                        onHover: function (event, elements) {
+                            if (elements.length) {
+                                const index = elements[0].datasetIndex; // ホバー中のデータセットインデックスを取得
+                                chartInstance.data.datasets.forEach((dataset, i) => {
+                                    dataset.backgroundColor = i === index ? borderColors[i] : baseColors[i]; // ホバー中のデータセットの背景色を変更
+                                });
+                            } else {
+                                chartInstance.data.datasets.forEach((dataset, i) => {
+                                    dataset.backgroundColor = baseColors[i]; // ホバーが解除された場合、背景色を元に戻す
+                                });
+                            }
+                            chartInstance.update(); // チャートを更新
+                        }
+                    }
+                }
+            });
+        }
+        
+        
+        // ページが読み込まれたときにデータをロード
+        window.onload = () => {
+            loadData(x, y);
+        };
+    </script>
+</body>
+</html>
